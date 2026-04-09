@@ -304,3 +304,79 @@ def _get_recommendations(verdict: str, media_type: str) -> list:
             f"✅ No significant synthetic indicators detected in this {media_type}",
             "Always independently verify sensational claims before sharing",
         ]
+
+def fact_check_claim(claim_text: str) -> dict:
+    if not gemini_model:
+        return {
+            "verdict": "UNVERIFIABLE",
+            "confidence_score": 0,
+            "explanation": "Gemini AI is not configured. Cannot perform web fact-checking.",
+            "sources": []
+        }
+    
+    try:
+        from duckduckgo_search import DDGS
+        import google.generativeai as genai
+        
+        # 1. Search the web
+        print(f"🔍 Searching web for claim: {claim_text[:50]}...")
+        search_results = []
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(claim_text, max_results=5))
+                for r in results:
+                    search_results.append(f"Title: {r['title']}\nSnippet: {r['body']}\nURL: {r['href']}")
+        except Exception as e:
+            print(f"⚠️ DuckDuckGo search error: {e}")
+            search_results.append(f"Web search unavailable. Error: {e}")
+
+        search_context = "\n\n---\n".join(search_results)
+
+        # 2. Ask Gemini
+        prompt = f"""You are an expert, impartial fact-checker and OSINT analyst.
+A user has submitted the following text/claim to be verified:
+"{claim_text}"
+
+Here is the live web search context we found for this claim:
+{search_context}
+
+Analyze the claim against the web evidence. 
+Determine if the claim is TRUE, FALSE, or MISLEADING. 
+
+Respond ONLY with a JSON object in this exact format (no markdown tags):
+{{
+  "verdict": "<TRUE | FALSE | MISLEADING | UNVERIFIABLE>",
+  "confidence_score": <integer 0-100 indicating how confident you are in the verdict>,
+  "explanation": "<A concise 2-3 sentence explanation of why it is true or false, citing specific facts found in the search context>",
+  "sources": ["<url1>", "<url2>"] 
+}}"""
+
+        response = gemini_model.generate_content(prompt)
+        raw = response.text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+                
+        data = json.loads(raw.strip())
+        
+        return {
+            "verdict": data.get("verdict", "UNVERIFIABLE"),
+            "confidence_score": data.get("confidence_score", 0),
+            "explanation": data.get("explanation", "Could not generate an explanation."),
+            "sources": data.get("sources", []),
+            "file_info": {
+                "media_type": "TEXT",
+                "filename": "Direct Text Claim / OSINT",
+                "file_size_kb": round(len(claim_text) / 1024, 1)
+            }
+        }
+        
+    except Exception as e:
+        print(f"⚠️ Fact-check error: {e}")
+        return {
+            "verdict": "ERROR",
+            "confidence_score": 0,
+            "explanation": f"An engine error occurred: {e}",
+            "sources": []
+        }

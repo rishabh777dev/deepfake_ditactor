@@ -47,6 +47,19 @@ async def analyze_media(media: UploadFile = File(...)):
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+from pydantic import BaseModel
+
+class ClaimRequest(BaseModel):
+    claim: str
+
+@app.post("/api/factcheck")
+async def factcheck_claim(req: ClaimRequest):
+    """
+    Accepts text claims/news snippets, scrapes the web for context, 
+    and returns a Gemini-powered fact-check OSINT report.
+    """
+    return ai_engine.fact_check_claim(req.claim)
+
 @app.get("/api/health")
 def health_check():
     return {"status": "online", "service": "TruthGuard AI", "version": "2.0.0"}

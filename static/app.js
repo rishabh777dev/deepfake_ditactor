@@ -52,6 +52,9 @@ const MEDIA_CONFIG = {
         btnText: 'Choose Image File',
         accept: 'image/*',
     },
+    text: {
+        // Handled specially
+    }
 };
 
 let currentMediaType = 'audio';
@@ -61,6 +64,9 @@ let selectedFile = null;
 const audioInput    = document.getElementById('audioInput');
 const uploadBtn     = document.getElementById('uploadBtn');
 const dropZone      = document.getElementById('dropZone');
+const textZone      = document.getElementById('textZone');
+const textClaimInput = document.getElementById('textClaimInput');
+const analyzeTextBtn = document.getElementById('analyzeTextBtn');
 const filePreview   = document.getElementById('filePreview');
 const fileNameEl    = document.getElementById('fileName');
 const fileSizeEl    = document.getElementById('fileSize');
@@ -73,25 +79,34 @@ const uploadSection   = document.querySelector('.upload-section');
 // ─── Tab Switching ────────────────────────────
 document.querySelectorAll('.media-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-        // Reset file
+        // Reset file and text
         selectedFile = null;
         audioInput.value = '';
+        textClaimInput.value = '';
         filePreview.style.display = 'none';
-        dropZone.style.display = 'block';
 
         // Update active tab
         document.querySelectorAll('.media-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentMediaType = tab.dataset.type;
 
-        // Update UI
-        const cfg = MEDIA_CONFIG[currentMediaType];
-        document.getElementById('uploadIcon').textContent = cfg.icon;
-        document.getElementById('uploadTitle').textContent = cfg.title;
-        document.getElementById('uploadDesc').textContent = cfg.desc;
-        document.getElementById('uploadFormats').textContent = cfg.formats;
-        document.getElementById('uploadBtnText').textContent = cfg.btnText;
-        audioInput.accept = cfg.accept;
+        // Display correct zone
+        if (currentMediaType === 'text') {
+            dropZone.style.display = 'none';
+            textZone.style.display = 'block';
+        } else {
+            textZone.style.display = 'none';
+            dropZone.style.display = 'block';
+            
+            // Update UI for media
+            const cfg = MEDIA_CONFIG[currentMediaType];
+            document.getElementById('uploadIcon').textContent = cfg.icon;
+            document.getElementById('uploadTitle').textContent = cfg.title;
+            document.getElementById('uploadDesc').textContent = cfg.desc;
+            document.getElementById('uploadFormats').textContent = cfg.formats;
+            document.getElementById('uploadBtnText').textContent = cfg.btnText;
+            audioInput.accept = cfg.accept;
+        }
     });
 });
 
@@ -135,15 +150,36 @@ removeFileBtn.addEventListener('click', () => {
     dropZone.style.display = 'block';
 });
 
-// ─── Analysis ─────────────────────────────────
+// ─── Analysis (Video/Image/Audio) ─────────────
 analyzeBtn.addEventListener('click', async () => {
     if (!selectedFile) return;
+    await performAnalysis('/api/analyze', true);
+});
 
-    const btnText    = document.querySelector('.analyze-btn-text');
-    const btnLoading = document.querySelector('.analyze-btn-loading');
+// ─── Fact-Check (Text) ────────────────────────
+analyzeTextBtn.addEventListener('click', async () => {
+    if (!textClaimInput.value.trim()) {
+        alert("Please paste a claim or news snippet first.");
+        return;
+    }
+    await performAnalysis('/api/factcheck', false);
+});
+
+async function performAnalysis(endpoint, isFormData) {
+    let btnText, btnLoading, btn;
+    if (isFormData) {
+        btn = analyzeBtn;
+        btnText = document.querySelector('.analyze-btn-text');
+        btnLoading = document.querySelector('.analyze-btn-loading');
+    } else {
+        btn = analyzeTextBtn;
+        btnText = analyzeTextBtn.querySelector('.analyze-btn-text');
+        btnLoading = analyzeTextBtn.querySelector('.analyze-btn-loading');
+    }
+
     btnText.style.display = 'none';
     btnLoading.style.display = 'inline';
-    analyzeBtn.disabled = true;
+    btn.disabled = true;
 
     uploadSection.style.display = 'none';
     progressSection.style.display = 'flex';
@@ -152,14 +188,17 @@ analyzeBtn.addEventListener('click', async () => {
     await animateSteps();
 
     try {
-        const formData = new FormData();
-        formData.append('media', selectedFile);
+        let options = { method: 'POST' };
+        if (isFormData) {
+            const formData = new FormData();
+            formData.append('media', selectedFile);
+            options.body = formData;
+        } else {
+            options.headers = { 'Content-Type': 'application/json' };
+            options.body = JSON.stringify({ claim: textClaimInput.value.trim() });
+        }
 
-        const response = await fetch('/api/analyze', {
-            method: 'POST',
-            body: formData,
-        });
-
+        const response = await fetch(endpoint, options);
         if (!response.ok) throw new Error(`Server error: ${response.status}`);
         const data = await response.json();
 
@@ -171,11 +210,12 @@ analyzeBtn.addEventListener('click', async () => {
         progressSection.style.display = 'none';
         uploadSection.style.display = 'flex';
         alert(`Analysis failed: ${err.message}`);
+    } finally {
         btnText.style.display = 'inline';
         btnLoading.style.display = 'none';
-        analyzeBtn.disabled = false;
+        btn.disabled = false;
     }
-});
+}
 
 async function animateSteps() {
     const steps  = ['step1', 'step2', 'step3', 'step4'];
@@ -199,7 +239,7 @@ function displayResults(data) {
 
     const verdict  = data.verdict;
     const score    = data.confidence_score;
-    const analysis = data.analysis;
+    const isText   = (data.file_info && data.file_info.media_type === 'TEXT');
 
     const verdictCard  = document.getElementById('verdictCard');
     const verdictBadge = document.getElementById('verdictBadge');
@@ -208,29 +248,76 @@ function displayResults(data) {
     const verdictDesc  = document.getElementById('verdictDesc');
     const scoreRing    = document.getElementById('scoreRingFill');
 
-    const classMap = { 'FAKE': 'fake', 'SUSPICIOUS': 'suspicious', 'LIKELY REAL': 'real' };
-    verdictCard.className = 'verdict-card ' + (classMap[verdict] || 'real');
+    if (isText) {
+        // --- FACT CHECK LOGIC ---
+        const classMap = { 'FALSE': 'fake', 'MISLEADING': 'suspicious', 'TRUE': 'real', 'UNVERIFIABLE': 'suspicious' };
+        verdictCard.className = 'verdict-card ' + (classMap[verdict] || 'real');
 
-    const badgeMap = { 'FAKE': '🚨 DEEPFAKE DETECTED', 'SUSPICIOUS': '⚠️ SUSPICIOUS', 'LIKELY REAL': '✅ LIKELY AUTHENTIC' };
-    verdictBadge.textContent = badgeMap[verdict] || verdict;
+        const badgeMap = { 'FALSE': '🚨 DANGEROUS DISINFORMATION', 'MISLEADING': '⚠️ MISLEADING CLAIM', 'TRUE': '✅ VERIFIED FACT', 'UNVERIFIABLE': '🔍 UNVERIFIABLE CLAIM' };
+        verdictBadge.textContent = badgeMap[verdict] || verdict;
 
-    const descMap = {
-        'FAKE': 'Our AI has detected strong indicators of synthetic manipulation. This content is very likely a deepfake.',
-        'SUSPICIOUS': 'This content shows anomalies that may indicate manipulation. Treat with caution.',
-        'LIKELY REAL': 'No significant indicators of deepfake manipulation were found.',
-    };
-    verdictText.textContent = verdict;
-    verdictDesc.textContent = descMap[verdict] || '';
+        verdictText.textContent = verdict;
+        verdictDesc.textContent = data.explanation || '';
 
-    animateNumber(scoreValueEl, 0, score, 1800);
+        animateNumber(scoreValueEl, 0, score, 1800);
+        
+        const circumference = 534;
+        setTimeout(() => {
+            scoreRing.style.strokeDashoffset = circumference - (score / 100) * circumference;
+        }, 200);
 
-    const circumference = 534;
-    setTimeout(() => {
-        scoreRing.style.strokeDashoffset = circumference - (score / 100) * circumference;
-    }, 200);
+        // Hide media cards
+        document.getElementById('voiceCard').style.display = 'none';
+        document.getElementById('spectralCard').style.display = 'none';
+        
+        // Show Gemini card for OSINT details
+        const geminiCard = document.getElementById('geminiCard');
+        geminiCard.style.display = 'block';
+        document.querySelector('#geminiCard h3').textContent = 'OSINT Search Context';
+        
+        document.getElementById('geminiTranscript').style.display = 'block';
+        document.querySelector('#geminiTranscript h4').textContent = 'Sources Analyzed';
+        
+        if (data.sources && data.sources.length > 0) {
+            document.getElementById('transcriptText').innerHTML = data.sources.map(s => `<a href="${s}" target="_blank" style="color:var(--accent-cyan)">${s}</a>`).join('<br>');
+        } else {
+            document.getElementById('transcriptText').textContent = "No definitive sources could be retrieved.";
+        }
+        
+        document.getElementById('geminiStats').innerHTML = '';
+        document.getElementById('geminiAssessment').textContent = '';
+        document.getElementById('geminiFlags').innerHTML = '';
 
-    // Primary Analysis (Voice / Motion / Visual)
-    const prim = analysis.primary;
+        // Recommendations
+        const recsList = document.getElementById('recsList');
+        recsList.innerHTML = `<div class="rec-item">Source verification completed using Live DuckDuckGo OSINT analysis joined with Gemini inference.</div>`;
+        
+    } else {
+        // --- MEDIA DEEPFAKE LOGIC ---
+        const analysis = data.analysis;
+        const classMap = { 'FAKE': 'fake', 'SUSPICIOUS': 'suspicious', 'LIKELY REAL': 'real' };
+        verdictCard.className = 'verdict-card ' + (classMap[verdict] || 'real');
+
+        const badgeMap = { 'FAKE': '🚨 DEEPFAKE DETECTED', 'SUSPICIOUS': '⚠️ SUSPICIOUS', 'LIKELY REAL': '✅ LIKELY AUTHENTIC' };
+        verdictBadge.textContent = badgeMap[verdict] || verdict;
+
+        const descMap = {
+            'FAKE': 'Our AI has detected strong indicators of synthetic manipulation. This content is very likely a deepfake.',
+            'SUSPICIOUS': 'This content shows anomalies that may indicate manipulation. Treat with caution.',
+            'LIKELY REAL': 'No significant indicators of deepfake manipulation were found.',
+        };
+        verdictText.textContent = verdict;
+        verdictDesc.textContent = descMap[verdict] || '';
+
+        animateNumber(scoreValueEl, 0, score, 1800);
+
+        const circumference = 534;
+        setTimeout(() => {
+            scoreRing.style.strokeDashoffset = circumference - (score / 100) * circumference;
+        }, 200);
+
+        // Primary Analysis (Voice / Motion / Visual)
+        const prim = analysis.primary;
     if (prim) {
         document.getElementById('voiceCard').style.display = 'block';
         document.querySelector('#voiceCard h3').textContent = prim.title;
@@ -313,6 +400,8 @@ function displayResults(data) {
         </div>
     `;
 
+    } // end else block for media deepfakes
+    
     resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
