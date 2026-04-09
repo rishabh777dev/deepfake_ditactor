@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TruthGuard AI — Multi-Media Deepfake Detection</title>
+    <meta name="description" content="Real-time AI-powered deepfake detection for audio, video, and images. Verify suspicious media instantly.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Animated background particles -->
+    <div class="bg-particles" id="bgParticles"></div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <div class="shield-icon">🛡️</div>
+            <span class="brand-text">TruthGuard<span class="brand-accent">AI</span></span>
+        </div>
+        <div class="nav-status">
+            <span class="status-dot"></span>
+            <span class="status-text">System Online</span>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-badge">CYBERSECURITY × AI</div>
+        <h1 class="hero-title">
+            Detect Deepfake Media<br>
+            <span class="gradient-text">Before It Spreads</span>
+        </h1>
+        <p class="hero-subtitle">
+            Real-time AI verification for suspicious audio, video, and images.<br>
+            Stop misinformation at the source.
+        </p>
+    </section>
+
+    <!-- Upload Section -->
+    <section class="upload-section">
+        <div class="upload-card" id="uploadCard">
+            <!-- Media Type Selector -->
+            <div class="media-tabs">
+                <button class="media-tab active" id="tab-audio" data-type="audio">
+                    <span class="tab-icon">🎤</span>
+                    <span>Audio</span>
+                </button>
+                <button class="media-tab" id="tab-video" data-type="video">
+                    <span class="tab-icon">🎬</span>
+                    <span>Video</span>
+                </button>
+                <button class="media-tab" id="tab-image" data-type="image">
+                    <span class="tab-icon">🖼️</span>
+                    <span>Image</span>
+                </button>
+            </div>
+
+            <div class="upload-zone" id="dropZone">
+                <div class="upload-icon-wrapper">
+                    <div class="upload-ring"></div>
+                    <div class="upload-icon" id="uploadIcon">🎤</div>
+                </div>
+                <h2 class="upload-title" id="uploadTitle">Upload Audio for Analysis</h2>
+                <p class="upload-desc" id="uploadDesc">Drag & drop an audio file or click to browse</p>
+                <p class="upload-formats" id="uploadFormats">Supports: MP3, WAV, OGG, M4A, WEBM</p>
+                <input type="file" id="audioInput" accept="audio/*" hidden>
+                <button class="upload-btn" id="uploadBtn">
+                    <span id="uploadBtnText">Choose Audio File</span>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                </button>
+            </div>
+            <!-- File preview -->
+            <div class="file-preview" id="filePreview" style="display:none">
+                <div class="file-info">
+                    <div class="file-icon" id="previewIcon">🎵</div>
+                    <div class="file-details">
+                        <span class="file-name" id="fileName"></span>
+                        <span class="file-size" id="fileSize"></span>
+                    </div>
+                    <button class="file-remove" id="removeFile">✕</button>
+                </div>
+                <button class="analyze-btn" id="analyzeBtn">
+                    <span class="analyze-btn-text">🔍 Analyze for Deepfake</span>
+                    <span class="analyze-btn-loading" style="display:none">
+                        <span class="spinner"></span> Analyzing...
+                    </span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Analysis Progress -->
+    <section class="progress-section" id="progressSection" style="display:none">
+        <div class="progress-card">
+            <h3 class="progress-title">AI Analysis in Progress</h3>
+            <div class="progress-steps">
+                <div class="step" id="step1">
+                    <div class="step-icon">🎙️</div>
+                    <span>Voice Pattern Analysis</span>
+                    <div class="step-status"></div>
+                </div>
+                <div class="step" id="step2">
+                    <div class="step-icon">📊</div>
+                    <span>Spectral Analysis</span>
+                    <div class="step-status"></div>
+                </div>
+                <div class="step" id="step3">
+                    <div class="step-icon">🔍</div>
+                    <span>Metadata Scanning</span>
+                    <div class="step-status"></div>
+                </div>
+                <div class="step" id="step4">
+                    <div class="step-icon">🌐</div>
+                    <span>Viral Spread Check</span>
+                    <div class="step-status"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Results Section -->
+    <section class="results-section" id="resultsSection" style="display:none">
+        <!-- Verdict Card -->
+        <div class="verdict-card" id="verdictCard">
+            <div class="verdict-badge" id="verdictBadge"></div>
+            <div class="score-ring-wrapper">
+                <svg class="score-ring" viewBox="0 0 200 200">
+                    <circle class="score-ring-bg" cx="100" cy="100" r="85"/>
+                    <circle class="score-ring-fill" id="scoreRingFill" cx="100" cy="100" r="85"/>
+                </svg>
+                <div class="score-value" id="scoreValue">0</div>
+                <div class="score-label">Fake Probability</div>
+            </div>
+            <h2 class="verdict-text" id="verdictText"></h2>
+            <p class="verdict-desc" id="verdictDesc"></p>
+        </div>
+
+        <!-- Gemini AI Analysis Card (shown when Gemini is available) -->
+        <div class="gemini-card" id="geminiCard" style="display:none">
+            <div class="gemini-header">
+                <div class="gemini-icon">✨</div>
+                <div>
+                    <h3 class="gemini-title">Gemini AI Content Analysis</h3>
+                    <p class="gemini-sub">Powered by Google Gemini 1.5 Flash</p>
+                </div>
+                <div class="gemini-badge">LIVE AI</div>
+            </div>
+            <div class="gemini-transcript" id="geminiTranscript" style="display:none">
+                <div class="transcript-label">📝 Transcript</div>
+                <div class="transcript-text" id="transcriptText"></div>
+            </div>
+            <div class="gemini-stats" id="geminiStats"></div>
+            <div class="gemini-assessment" id="geminiAssessment"></div>
+            <div class="analysis-flags" id="geminiFlags"></div>
+        </div>
+
+        <!-- Detailed Analysis -->
+        <div class="analysis-grid">
+            <!-- Voice Patterns -->
+            <div class="analysis-card" id="voiceCard">
+                <div class="analysis-header">
+                    <span class="analysis-icon">🎙️</span>
+                    <h3>Voice Pattern Analysis</h3>
+                </div>
+                <div class="analysis-metrics" id="voiceMetrics"></div>
+                <div class="analysis-flags" id="voiceFlags"></div>
+            </div>
+
+            <!-- Spectral -->
+            <div class="analysis-card" id="spectralCard">
+                <div class="analysis-header">
+                    <span class="analysis-icon">📊</span>
+                    <h3>Spectral Analysis</h3>
+                </div>
+                <div class="analysis-metrics" id="spectralMetrics"></div>
+                <div class="analysis-flags" id="spectralFlags"></div>
+            </div>
+
+            <!-- Metadata -->
+            <div class="analysis-card" id="metadataCard">
+                <div class="analysis-header">
+                    <span class="analysis-icon">🔍</span>
+                    <h3>Metadata Analysis</h3>
+                </div>
+                <div class="analysis-flags" id="metadataFlags"></div>
+            </div>
+
+            <!-- Viral Check -->
+            <div class="analysis-card" id="viralCard">
+                <div class="analysis-header">
+                    <span class="analysis-icon">🌐</span>
+                    <h3>Viral Spread Check</h3>
+                </div>
+                <div class="analysis-flags" id="viralFlags"></div>
+            </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="recommendations-card" id="recsCard">
+            <h3 class="recs-title">📋 Recommendations</h3>
+            <div class="recs-list" id="recsList"></div>
+        </div>
+
+        <!-- File Info -->
+        <div class="file-info-card">
+            <h3>📁 File Information</h3>
+            <div class="file-info-grid" id="fileInfoGrid"></div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="action-btn action-share" id="shareBtn">
+                📤 Share Verified Result
+            </button>
+            <button class="action-btn action-new" id="newAnalysisBtn">
+                🔄 Analyze Another
+            </button>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>TruthGuard AI — Stopping digital riots before they start</p>
+        <p class="footer-sub">Hackathon Prototype • Cybersecurity & Misinformation</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
