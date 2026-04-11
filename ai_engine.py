@@ -21,7 +21,7 @@ if GEMINI_API_KEY:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+        gemini_model = genai.GenerativeModel("gemini-2.5-flash-lite")
         print("✅ Gemini AI loaded successfully")
     except Exception as e:
         print(f"⚠️ Gemini load failed: {e}")
@@ -306,12 +306,19 @@ def _get_recommendations(verdict: str, media_type: str) -> list:
         ]
 
 def fact_check_claim(claim_text: str) -> dict:
+    base_file_info = {
+        "media_type": "TEXT",
+        "filename": "Direct Text Claim / OSINT",
+        "file_size_kb": round(len(claim_text) / 1024, 1)
+    }
+
     if not gemini_model:
         return {
             "verdict": "UNVERIFIABLE",
             "confidence_score": 0,
             "explanation": "Gemini AI is not configured. Cannot perform web fact-checking.",
-            "sources": []
+            "sources": [],
+            "file_info": base_file_info
         }
     
     try:
@@ -322,32 +329,57 @@ def fact_check_claim(claim_text: str) -> dict:
         print(f"🔍 Searching web for claim: {claim_text[:50]}...")
         search_results = []
         try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(claim_text, max_results=5))
-                for r in results:
-                    search_results.append(f"Title: {r['title']}\nSnippet: {r['body']}\nURL: {r['href']}")
+            import requests
+            import re
+            search_query = claim_text[:100]
+            
+            res = requests.post(
+                "https://lite.duckduckgo.com/lite/",
+                data={"q": search_query},
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
+                timeout=10
+            )
+            
+            # DDG Lite puts links and snippets in separate <tr> rows
+            # Extract all result links (class='result-link')
+            links = re.findall(r"href=['\"]?(https?://[^'\"\s>]+)[^>]*class=['\"]result-link['\"]|class=['\"]result-link['\"][^>]*href=['\"]?(https?://[^'\"\s>]+)", res.text)
+            urls = [a or b for a, b in links]
+            
+            # Extract snippets from td.result-snippet
+            raw_snippets = re.findall(r"<td[^>]*class=['\"]result-snippet['\"][^>]*>(.*?)</td>", res.text, re.DOTALL)
+            
+            for i in range(min(5, len(raw_snippets), len(urls))):
+                clean = re.sub(r'<[^>]+>', '', raw_snippets[i]).strip()
+                if clean and urls[i]:
+                    search_results.append(f"Snippet: {clean}\nURL: {urls[i]}")
+                    
         except Exception as e:
-            print(f"⚠️ DuckDuckGo search error: {e}")
-            search_results.append(f"Web search unavailable. Error: {e}")
+            print(f"⚠️ Native Web Scraper error: {e}")
 
         search_context = "\n\n---\n".join(search_results)
+        
+        fallback_msg = ""
+        if not search_context.strip():
+            print("⚠️ No live search results found. Falling back to internal base model knowledge.")
+            fallback_msg = "We were unable to retrieve live web results for this phrase. Rely entirely on your robust internal knowledge base. "
 
         # 2. Ask Gemini
         prompt = f"""You are an expert, impartial fact-checker and OSINT analyst.
 A user has submitted the following text/claim to be verified:
 "{claim_text}"
 
-Here is the live web search context we found for this claim:
+{fallback_msg}
+Here is the live web search context we found for this claim (if any):
 {search_context}
 
-Analyze the claim against the web evidence. 
+Analyze the claim against the web evidence or your internal knowledge. 
 Determine if the claim is TRUE, FALSE, or MISLEADING. 
 
 Respond ONLY with a JSON object in this exact format (no markdown tags):
 {{
   "verdict": "<TRUE | FALSE | MISLEADING | UNVERIFIABLE>",
   "confidence_score": <integer 0-100 indicating how confident you are in the verdict>,
-  "explanation": "<A concise 2-3 sentence explanation of why it is true or false, citing specific facts found in the search context>",
+  "explanation": "<A concise 2-3 sentence explanation of why it is true or false, citing specific facts. If using live context, mention it. If using internal knowledge, state that.>",
   "sources": ["<url1>", "<url2>"] 
 }}"""
 
@@ -365,11 +397,7 @@ Respond ONLY with a JSON object in this exact format (no markdown tags):
             "confidence_score": data.get("confidence_score", 0),
             "explanation": data.get("explanation", "Could not generate an explanation."),
             "sources": data.get("sources", []),
-            "file_info": {
-                "media_type": "TEXT",
-                "filename": "Direct Text Claim / OSINT",
-                "file_size_kb": round(len(claim_text) / 1024, 1)
-            }
+            "file_info": base_file_info
         }
         
     except Exception as e:
@@ -378,5 +406,6 @@ Respond ONLY with a JSON object in this exact format (no markdown tags):
             "verdict": "ERROR",
             "confidence_score": 0,
             "explanation": f"An engine error occurred: {e}",
-            "sources": []
+            "sources": [],
+            "file_info": base_file_info
         }

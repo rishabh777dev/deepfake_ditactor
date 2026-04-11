@@ -276,7 +276,7 @@ function displayResults(data) {
         document.querySelector('#geminiCard h3').textContent = 'OSINT Search Context';
         
         document.getElementById('geminiTranscript').style.display = 'block';
-        document.querySelector('#geminiTranscript h4').textContent = 'Sources Analyzed';
+        document.querySelector('#geminiTranscript .transcript-label').textContent = 'Sources Analyzed';
         
         if (data.sources && data.sources.length > 0) {
             document.getElementById('transcriptText').innerHTML = data.sources.map(s => `<a href="${s}" target="_blank" style="color:var(--accent-cyan)">${s}</a>`).join('<br>');
@@ -317,7 +317,7 @@ function displayResults(data) {
         }, 200);
 
         // Primary Analysis (Voice / Motion / Visual)
-        const prim = analysis.primary;
+        const prim = analysis ? analysis.primary : null;
     if (prim) {
         document.getElementById('voiceCard').style.display = 'block';
         document.querySelector('#voiceCard h3').textContent = prim.title;
@@ -329,7 +329,7 @@ function displayResults(data) {
     }
 
     // Spectral Analysis
-    const sp = analysis.spectral;
+    const sp = analysis ? analysis.spectral : null;
     if (sp) {
         document.getElementById('spectralCard').style.display = 'block';
         document.querySelector('#spectralCard h3').textContent = sp.title;
@@ -340,11 +340,11 @@ function displayResults(data) {
         document.getElementById('spectralCard').style.display = 'none';
     }
 
-    renderFlags('metadataFlags', analysis.metadata?.flags || []);
-    renderFlags('viralFlags', analysis.viral?.flags || []);
+    renderFlags('metadataFlags', analysis?.metadata?.flags || []);
+    renderFlags('viralFlags', analysis?.viral?.flags || []);
 
     // Gemini AI
-    const gemini = analysis.gemini_analysis;
+    const gemini = analysis ? analysis.gemini_analysis : null;
     if (gemini && gemini.available) {
         document.getElementById('geminiCard').style.display = 'block';
 
